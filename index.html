@@ -36,7 +36,7 @@
 <body>
 
 <div class="card">
-    <h1>簡易ナビv1.0</h1>
+    <h1>簡易ナビv1.1</h1>
 　　<h1>事前にオンラインで目標地の地図を閲覧しキャッシュして下さい。</h1>
     <h1>別途、方位磁針で確認し、スマホ等の上部を”北”方向へに向けて下さい。</h1>
     <div class="nav-panel">
@@ -50,7 +50,13 @@
             <div class="distance-display"><span id="distVal">---</span> m</div>
         </div>
     </div>
-
+    
+    <div class="system-box">
+        座標系の選択:
+        <select id="systemSelect">
+            </select>
+    </div>
+    
     <div id="status">現在地を取得してください</div>
     <button class="btn-gps" id="btnGps">現在地を更新</button>
     <button class="btn-map" id="btnMap">現在地（青）と目標（赤）を地図で表示</button>
@@ -61,12 +67,6 @@
         <div><span>現在 X (北):</span> <span class="val" id="posX">---</span> m</div>
         <div><span>現在 Y (東):</span> <span class="val" id="posY">---</span> m</div>
         <div style="font-size: 0.7rem; color: #aaa; margin-top:5px;">系: <span id="sysDisplay">6</span>系 / 緯度:<span id="lat">--</span> 経度:<span id="lon">--</span></div>
-    </div>
-
-    <div class="system-box">
-        座標系の選択:
-        <select id="systemSelect">
-            </select>
     </div>
 </div>
 
@@ -272,6 +272,7 @@ if ('serviceWorker' in navigator) {
 </script>
 </body>
 </html>
+
 
 
 
