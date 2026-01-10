@@ -11,7 +11,6 @@
         .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); max-width: 600px; margin: auto; }
         h1 { font-size: 1.1rem; margin: 0 0 10px 0; color: #004a99; text-align: center; border-bottom: 2px solid #eee; padding-bottom: 5px; }
         
-        /* ナビゲーション表示エリア */
         .nav-panel { background: #e3f2fd; border: 2px solid #2196f3; border-radius: 10px; padding: 15px; margin-bottom: 15px; text-align: center; }
         .nav-target-input { display: flex; gap: 5px; margin-bottom: 10px; }
         .nav-target-input input { width: 50%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; font-size: 0.9rem; }
@@ -28,12 +27,16 @@
         .btn-map { background: #ff9800; color: white; }
         #map { height: 250px; width: 100%; border-radius: 8px; margin-bottom: 15px; display: none; border: 1px solid #ccc; }
         #status { font-size: 0.8rem; color: #666; text-align: center; margin-bottom: 5px; }
+        
+        /* 座標系選択のスタイル調整 */
+        .system-box { background: #eee; padding: 10px; border-radius: 8px; font-size: 0.8rem; }
+        select { width: 100%; padding: 8px; margin-top: 5px; border-radius: 4px; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h1>簡易ナビv0.1</h1>
+    <h1>簡易ナビ v0.2</h1>
 
     <div class="nav-panel">
         <div style="font-size: 0.8rem; font-weight: bold; margin-bottom: 5px;">【目標とする直交座標を入力】</div>
@@ -50,7 +53,7 @@
 
     <div id="status">現在地を取得してください</div>
     <button class="btn-gps" id="btnGps">現在地を更新</button>
-    <button class="btn-map" id="btnMap">現在地を地図で表示</button>
+    <button class="btn-map" id="btnMap">現在地と目標を地図で表示</button>
 
     <div id="map"></div>
 
@@ -60,21 +63,72 @@
         <div style="font-size: 0.7rem; color: #aaa; margin-top:5px;">系: <span id="sysDisplay">6</span>系 / 緯度:<span id="lat">--</span> 経度:<span id="lon">--</span></div>
     </div>
 
-    <div style="font-size: 0.7rem; color: #666;">
-        座標系: <select id="systemSelect" style="font-size: 0.7rem;"><option value="6" selected>第 6 系</option></select>
+    <div class="system-box">
+        座標系の選択:
+        <select id="systemSelect">
+            </select>
     </div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    // --- 座標変換・定数 ---
-    const SYSTEM_ORIGINS = { 6:[36,136] }; // 代表で6系のみ
+    // --- 定数・変数 ---
+    const SYSTEM_ORIGINS = {
+        1:[33,129.5], 2:[33,131], 3:[36,132.166666666], 4:[33,133.5], 5:[33,134.333333333],
+        6:[36,136], 7:[36,137.166666666], 8:[36,138.5], 9:[36,139.833333333], 10:[40,140.833333333],
+        11:[40,142.833333333], 12:[44,142.25], 13:[44,143.333333333], 14:[44,145.833333333],
+        15:[26,124], 16:[26,127], 17:[26,131], 18:[20,136], 19:[26,154]
+    };
+
     let currentRaw = null;
     let map = null;
-    let marker = null;
+    let currentMarker = null; // 現在地ピン
+    let targetMarker = null;  // 目標地ピン
 
+    // --- 座標系セレクトボックスの生成 ---
+    const sysSelect = document.getElementById('systemSelect');
+    for (let i = 1; i <= 19; i++) {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.innerText = `第 ${i} 系 ${i===6 ? '(デフォルト)' : ''}`;
+        if (i === 6) opt.selected = true;
+        sysSelect.appendChild(opt);
+    }
+
+    // 逆変換（平面直角座標 -> 緯度経度）目標ピン表示用
+    function reverseConvert(x, y, sysId) {
+        const origin = SYSTEM_ORIGINS[sysId];
+        const phi0 = origin[0] * Math.PI / 180;
+        const lam0 = origin[1] * Math.PI / 180;
+        const a = 6378137.0, f = 1/298.257222101, m0 = 0.9999;
+        const e2 = f*(2-f), n = f/(2-f);
+        const ap = (a/(1+n))*(1 + (n**2)/4 + (n**4)/64);
+        const s0 = ((p) => {
+            const A = 1 + (3/4)*e2 + (45/64)*(e2**2) + (175/256)*(e2**3);
+            const B = (3/4)*e2 + (15/16)*(e2**2) + (525/512)*(e2**3);
+            const C = (15/64)*(e2**2) + (105/256)*(e2**3);
+            return a*(1-e2)*(A*p - (B/2)*Math.sin(2*p) + (C/4)*Math.sin(4*p));
+        })(phi0);
+
+        const xi = (x + m0 * s0) / (m0 * ap);
+        const eta = y / (m0 * ap);
+        const delta = [0, (1/2)*n-(2/3)*(n**2)+(37/96)*(n**3), (1/48)*(n**2)+(1/15)*(n**3), (17/480)*(n**3)];
+        let xip = xi, etap = eta;
+        for(let j=1; j<=3; j++) {
+            xip -= delta[j] * Math.sin(2*j*xi) * Math.cosh(2*j*eta);
+            etap -= delta[j] * Math.cos(2*j*xi) * Math.sinh(2*j*eta);
+        }
+        const chi = Math.asin(Math.sin(xip) / Math.cosh(etap));
+        const phi = chi + ( (e2/2) + (5/24)*(e2**2) + (e2**3)/12 )*Math.sin(2*chi) 
+                    + ( (7/48)*(e2**2) + (29/240)*(e2**3) )*Math.sin(4*chi) 
+                    + ( (7/120)*(e2**3) )*Math.sin(6*chi);
+        const lam = lam0 + Math.atan(Math.sinh(etap) / Math.cos(xip));
+        return [phi * 180 / Math.PI, lam * 180 / Math.PI];
+    }
+
+    // 順変換（緯度経度 -> 平面直角座標）現在地表示用
     function convert(lat, lon, sysId) {
-        const origin = SYSTEM_ORIGINS[sysId] || [36,136];
+        const origin = SYSTEM_ORIGINS[sysId];
         const phi0 = origin[0] * Math.PI / 180;
         const lam0 = origin[1] * Math.PI / 180;
         const phi = lat * Math.PI / 180;
@@ -100,45 +154,37 @@
         return { x: m0*ap*xi - m0*s(phi0), y: m0*ap*eta };
     }
 
-    // --- ナビゲーションロジック ---
     function updateNavigation() {
         const tx = parseFloat(document.getElementById('targetX').value);
         const ty = parseFloat(document.getElementById('targetY').value);
-        
         if (isNaN(tx) || isNaN(ty) || !currentRaw || !currentRaw.x) return;
 
-        const dx = tx - currentRaw.x; // 北方向の差
-        const dy = ty - currentRaw.y; // 東方向の差
-        
-        // 距離計算
+        const dx = tx - currentRaw.x;
+        const dy = ty - currentRaw.y;
         const dist = Math.sqrt(dx*dx + dy*dy);
         document.getElementById('distVal').innerText = dist.toFixed(1);
 
-        // 角度計算 (ラジアン)
-        // atan2(y, x) は右方向(東)を0度として時計回りに計算されることが多いが、
-        // 地図系(北=0度)に合わせるため atan2(dy, dx) を使用
         const angleRad = Math.atan2(dy, dx); 
         const angleDeg = angleRad * 180 / Math.PI;
-
-        // CSSのrotateは時計回りに回転するため、補正して適用
-        // ※上方向(↑)を北としたとき、東は+90度
         document.getElementById('arrow').style.transform = `rotate(${angleDeg}deg)`;
     }
 
     function getLocation() {
         const status = document.getElementById('status');
+        const sysId = document.getElementById('systemSelect').value;
         status.innerText = "GPS取得中...";
         navigator.geolocation.getCurrentPosition(
             pos => {
                 status.innerText = "更新完了";
                 currentRaw = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-                const res = convert(currentRaw.lat, currentRaw.lon, document.getElementById('systemSelect').value);
+                const res = convert(currentRaw.lat, currentRaw.lon, sysId);
                 currentRaw.x = res.x; currentRaw.y = res.y;
 
                 document.getElementById('lat').innerText = currentRaw.lat.toFixed(5);
                 document.getElementById('lon').innerText = currentRaw.lon.toFixed(5);
                 document.getElementById('posX').innerText = res.x.toFixed(3);
                 document.getElementById('posY').innerText = res.y.toFixed(3);
+                document.getElementById('sysDisplay').innerText = sysId;
                 
                 updateNavigation();
                 if(map) showMap();
@@ -150,24 +196,58 @@
 
     function showMap() {
         if (!currentRaw) return alert("位置情報を取得してください");
-        document.getElementById('map').style.display = 'block';
-        if (!map) {
-            map = L.map('map').setView([currentRaw.lat, currentRaw.lon], 18);
-            L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png').addTo(map);
-            marker = L.marker([currentRaw.lat, currentRaw.lon]).addTo(map);
-        } else {
-            map.setView([currentRaw.lat, currentRaw.lon]);
-            marker.setLatLng([currentRaw.lat, currentRaw.lon]);
+        const mapDiv = document.getElementById('map');
+        mapDiv.style.display = 'block';
+        const sysId = document.getElementById('systemSelect').value;
+        
+        // 目標地の緯度経度を算出
+        const tx = parseFloat(document.getElementById('targetX').value);
+        const ty = parseFloat(document.getElementById('targetY').value);
+        let targetLatLng = null;
+        if(!isNaN(tx) && !isNaN(ty)) {
+            targetLatLng = reverseConvert(tx, ty, sysId);
         }
+
+        if (!map) {
+            map = L.map('map');
+            L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', {
+                attribution: "地理院地図"
+            }).addTo(map);
+            currentMarker = L.marker([currentRaw.lat, currentRaw.lon], {title: "現在地"}).addTo(map).bindPopup("現在地");
+        } else {
+            currentMarker.setLatLng([currentRaw.lat, currentRaw.lon]);
+        }
+
+        // 目標ピンの処理
+        if (targetLatLng) {
+            if (!targetMarker) {
+                targetMarker = L.marker(targetLatLng, {
+                    icon: L.icon({
+                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                        iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+                    })
+                }).addTo(map).bindPopup("目標地点");
+            } else {
+                targetMarker.setLatLng(targetLatLng);
+            }
+            // 両方のピンが見えるように調整
+            const group = new L.featureGroup([currentMarker, targetMarker]);
+            map.fitBounds(group.getBounds().pad(0.2)); 
+        } else {
+            map.setView([currentRaw.lat, currentRaw.lon], 18);
+        }
+        
         setTimeout(() => map.invalidateSize(), 100);
     }
 
     document.getElementById('btnGps').addEventListener('click', getLocation);
     document.getElementById('btnMap').addEventListener('click', showMap);
-    // 目標値を手入力したときも即計算
     document.getElementById('targetX').addEventListener('input', updateNavigation);
     document.getElementById('targetY').addEventListener('input', updateNavigation);
+    document.getElementById('systemSelect').addEventListener('change', () => {
+        if(currentRaw) getLocation();
+    });
 </script>
 </body>
-
 </html>
