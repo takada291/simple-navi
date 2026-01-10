@@ -72,6 +72,27 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+// --- PWA: Service Workerの登録 ---
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').then(reg => {
+            console.log('Service Worker 登録成功:', reg.scope);
+            
+            // 更新チェック
+            reg.onupdatefound = () => {
+                const installingWorker = reg.installing;
+                installingWorker.onstatechange = () => {
+                    if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                        if (confirm("新しいバージョンがあります。更新しますか？")) {
+                            location.reload();
+                        }
+                    }
+                };
+            };
+        }).catch(err => console.error('Service Worker 登録失敗:', err));
+    });
+}
+
     // --- 定数・変数 ---
     const SYSTEM_ORIGINS = {
         1:[33,129.5], 2:[33,131], 3:[36,132.166666666], 4:[33,133.5], 5:[33,134.333333333],
@@ -251,6 +272,7 @@
 </script>
 </body>
 </html>
+
 
 
 
