@@ -37,7 +37,8 @@
 
 <div class="card">
     <h1>簡易ナビv0.2</h1>
-
+　　<h1>事前にオンラインで目標地の地図を閲覧しキャッシュして下さい。</h1>
+    <h1>方位磁針で確認し、スマホ等の上部を”北”方向へに向けて下さい。</h1>
     <div class="nav-panel">
         <div style="font-size: 0.8rem; font-weight: bold; margin-bottom: 5px;">【目標とする直交座標を入力】</div>
         <div class="nav-target-input">
@@ -47,13 +48,12 @@
         <div id="navResult">
             <div class="arrow-container" id="arrow">↑</div>
             <div class="distance-display"><span id="distVal">---</span> m</div>
-            <div style="font-size: 0.7rem; color: #555;">※スマホの上を”北”にしてください！</div>
         </div>
     </div>
 
     <div id="status">現在地を取得してください</div>
     <button class="btn-gps" id="btnGps">現在地を更新</button>
-    <button class="btn-map" id="btnMap">現在地と目標を地図で表示</button>
+    <button class="btn-map" id="btnMap">現在地（青）と目標（赤）を地図で表示</button>
 
     <div id="map"></div>
 
@@ -251,4 +251,5 @@
 </script>
 </body>
 </html>
+
 
