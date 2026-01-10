@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>杭ナビ - geo-location</title>
+    <title>simple-navi</title>
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
@@ -33,10 +33,10 @@
 <body>
 
 <div class="card">
-    <h1>簡易 杭ナビ v3.0</h1>
+    <h1>簡易ナビv0.1</h1>
 
     <div class="nav-panel">
-        <div style="font-size: 0.8rem; font-weight: bold; margin-bottom: 5px;">【目標座標を入力】</div>
+        <div style="font-size: 0.8rem; font-weight: bold; margin-bottom: 5px;">【目標とする直交座標を入力】</div>
         <div class="nav-target-input">
             <input type="number" id="targetX" placeholder="目標 X (北)" step="0.001">
             <input type="number" id="targetY" placeholder="目標 Y (東)" step="0.001">
@@ -44,7 +44,7 @@
         <div id="navResult">
             <div class="arrow-container" id="arrow">↑</div>
             <div class="distance-display"><span id="distVal">---</span> m</div>
-            <div style="font-size: 0.7rem; color: #555;">※上が「北」固定（スマホの上を北に向けてください）</div>
+            <div style="font-size: 0.7rem; color: #555;">※スマホの上を”北”にしてください！</div>
         </div>
     </div>
 
@@ -169,4 +169,5 @@
     document.getElementById('targetY').addEventListener('input', updateNavigation);
 </script>
 </body>
+
 </html>
