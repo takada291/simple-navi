@@ -37,10 +37,10 @@
 <body>
 
 <div class="card">
-    <h1>簡易ナビv1.2</h1>
+    <h1>簡易ナビv1.3</h1>
     <h1>事前にオンラインで目標地周辺の地図を閲覧しキャッシュして下さい。</h1>
     <div id="status">位置情報とコンパスを有効にしてください</div>
-
+    <button class="btn-compass" id="btnCompass">コンパスを有効にする</button>
     <div class="nav-panel">
         <div class="compass-info" id="compassDisplay">方位計測：オフ</div>
         <div class="nav-target-input">
@@ -52,8 +52,10 @@
             <div class="distance-display"><span id="distVal">---</span> m</div>
         </div>
     </div>
-
-    <button class="btn-compass" id="btnCompass">コンパスを有効にする</button>
+    <div class="system-box">
+        座標系の選択:
+        <select id="systemSelect"></select>
+    </div>    
     <button class="btn-gps" id="btnGps">現在地を更新（GPS）</button>
     <button class="btn-map" id="btnMap">地図を表示</button>
 
@@ -65,10 +67,7 @@
         <div style="font-size: 0.7rem; color: #aaa; margin-top:5px;">系: <span id="sysDisplay">6</span>系 / 緯度:<span id="lat">--</span> 経度:<span id="lon">--</span></div>
     </div>
 
-    <div class="system-box">
-        座標系の選択:
-        <select id="systemSelect"></select>
-    </div>
+    
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -139,19 +138,34 @@
         }
     }
 
+    let compassTimer = setTimeout(() => {
+        const display = document.getElementById('compassDisplay');
+        if (display.innerText === "方位計測：オフ") {
+            display.innerText = "⚠️方位非対応：端末上部を北に向けて下さい";
+            display.style.color = "red";
+            deviceHeading = 0; // 0度固定（北向き前提）
+            renderArrow();
+        }
+    }, 3000); // 3秒待っても反応がなければ非対応とみなす
+
     function handleOrientation(event) {
-        let heading = 0;
+        let heading = null;
         if (event.webkitCompassHeading) {
-            heading = event.webkitCompassHeading; // iOS用
+            heading = event.webkitCompassHeading; // iOS
         } else if (event.absolute && event.alpha) {
-            heading = 360 - event.alpha; // Android用
-        } else {
-            return;
+            heading = 360 - event.alpha; // Android
+        } else if (event.alpha) {
+            heading = 360 - event.alpha; // 一部のAndroid
         }
 
-        deviceHeading = heading;
-        document.getElementById('compassDisplay').innerText = `方位：${Math.round(heading)}° (スマホの向き)`;
-        renderArrow();
+        if (heading !== null) {
+            clearTimeout(compassTimer); // センサーが動いたらタイマー解除
+            deviceHeading = heading;
+            const display = document.getElementById('compassDisplay');
+            display.innerText = `方位：${Math.round(heading)}° (スマホの向き)`;
+            display.style.color = "#666";
+            renderArrow();
+        }
     }
 
     // --- 4. 位置情報(GPS) ---
@@ -280,3 +294,4 @@
 </script>
 </body>
 </html>
+
