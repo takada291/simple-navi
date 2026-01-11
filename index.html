@@ -37,9 +37,8 @@
 <body>
 
 <div class="card">
-    <h1>簡易ナビv1.4</h1>
+    <h1>簡易ナビv1.9</h1>
     <p>事前にオンラインで目標地周辺の地図を閲覧しキャッシュして下さい。</p>
-    <div id="status">位置情報と電子コンパスを有効にしてください</div>
     <button class="btn-compass" id="btnCompass">コンパスを有効にする</button>
     <div class="nav-panel">
         <div class="compass-info" id="compassDisplay">方位計測：オフ</div>
@@ -57,16 +56,13 @@
         <select id="systemSelect"></select>
     </div>    
     <button class="btn-gps" id="btnGps">現在地を更新（GPS）</button>
-    
     <div id="map"></div>
-
     <div class="display">
         <div><span>現在 X (北):</span> <span class="val" id="posX">---</span> m</div>
         <div><span>現在 Y (東):</span> <span class="val" id="posY">---</span> m</div>
         <div style="font-size: 0.7rem; color: #aaa; margin-top:5px;">系: <span id="sysDisplay">6</span>系 / 緯度:<span id="lat">--</span> 経度:<span id="lon">--</span></div>
     </div>
     <button class="btn-map" id="btnMap">地図を表示</button>
-    
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -293,5 +289,6 @@
 </script>
 </body>
 </html>
+
 
 
