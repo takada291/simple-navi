@@ -15,8 +15,9 @@
         .nav-target-input { display: flex; gap: 5px; margin-bottom: 10px; }
         .nav-target-input input { width: 50%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; font-size: 0.9rem; }
         
-        .arrow-container { font-size: 3rem; margin: 10px 0; transition: transform 0.3s ease; display: inline-block; }
+        .arrow-container { font-size: 4rem; margin: 10px 0; transition: transform 0.1s linear; display: inline-block; }
         .distance-display { font-size: 1.5rem; font-weight: bold; color: #d32f2f; }
+        .compass-info { font-size: 0.8rem; color: #666; margin-bottom: 5px; background: #fff; border-radius: 5px; padding: 2px; }
         
         .display { background: #333; color: #0f0; padding: 12px; border-radius: 8px; margin-bottom: 15px; font-family: monospace; font-size: 0.85rem; }
         .display div { display: flex; justify-content: space-between; margin-bottom: 2px; }
@@ -25,10 +26,10 @@
         button { width: 100%; padding: 14px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 1rem; margin-bottom: 8px; }
         .btn-gps { background: #007bff; color: white; }
         .btn-map { background: #ff9800; color: white; }
+        .btn-compass { background: #28a745; color: white; }
         #map { height: 250px; width: 100%; border-radius: 8px; margin-bottom: 15px; display: none; border: 1px solid #ccc; }
         #status { font-size: 0.8rem; color: #666; text-align: center; margin-bottom: 5px; }
         
-        /* 座標系選択のスタイル調整 */
         .system-box { background: #eee; padding: 10px; border-radius: 8px; font-size: 0.8rem; }
         select { width: 100%; padding: 8px; margin-top: 5px; border-radius: 4px; }
     </style>
@@ -36,11 +37,12 @@
 <body>
 
 <div class="card">
-    <h1>簡易ナビv1.1</h1>
-　　<h1>事前にオンラインで目標地の地図を閲覧しキャッシュして下さい。</h1>
-    <h1>別途、方位磁針で確認し、スマホ等の上部を”北”方向へに向けて下さい。</h1>
+    <h1>簡易ナビv1.2</h1>
+    <h1>事前にオンラインで目標地周辺の地図を閲覧しキャッシュして下さい。</h1>
+    <div id="status">位置情報とコンパスを有効にしてください</div>
+
     <div class="nav-panel">
-        <div style="font-size: 0.8rem; font-weight: bold; margin-bottom: 5px;">【目標とする直交座標を入力】</div>
+        <div class="compass-info" id="compassDisplay">方位計測：オフ</div>
         <div class="nav-target-input">
             <input type="number" id="targetX" placeholder="目標 X (北)" step="0.001">
             <input type="number" id="targetY" placeholder="目標 Y (東)" step="0.001">
@@ -50,16 +52,10 @@
             <div class="distance-display"><span id="distVal">---</span> m</div>
         </div>
     </div>
-    
-    <div class="system-box">
-        座標系の選択:
-        <select id="systemSelect">
-            </select>
-    </div>
-    
-    <div id="status">現在地を取得してください</div>
-    <button class="btn-gps" id="btnGps">現在地を更新</button>
-    <button class="btn-map" id="btnMap">現在地（青）と目標（赤）を地図で表示</button>
+
+    <button class="btn-compass" id="btnCompass">コンパスを有効にする</button>
+    <button class="btn-gps" id="btnGps">現在地を更新（GPS）</button>
+    <button class="btn-map" id="btnMap">地図を表示</button>
 
     <div id="map"></div>
 
@@ -68,31 +64,15 @@
         <div><span>現在 Y (東):</span> <span class="val" id="posY">---</span> m</div>
         <div style="font-size: 0.7rem; color: #aaa; margin-top:5px;">系: <span id="sysDisplay">6</span>系 / 緯度:<span id="lat">--</span> 経度:<span id="lon">--</span></div>
     </div>
+
+    <div class="system-box">
+        座標系の選択:
+        <select id="systemSelect"></select>
+    </div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-// --- PWA: Service Workerの登録 ---
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').then(reg => {
-            console.log('Service Worker 登録成功:', reg.scope);
-            
-            // 更新チェック
-            reg.onupdatefound = () => {
-                const installingWorker = reg.installing;
-                installingWorker.onstatechange = () => {
-                    if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                        if (confirm("新しいバージョンがあります。更新しますか？")) {
-                            location.reload();
-                        }
-                    }
-                };
-            };
-        }).catch(err => console.error('Service Worker 登録失敗:', err));
-    });
-}
-
     // --- 定数・変数 ---
     const SYSTEM_ORIGINS = {
         1:[33,129.5], 2:[33,131], 3:[36,132.166666666], 4:[33,133.5], 5:[33,134.333333333],
@@ -102,11 +82,11 @@ if ('serviceWorker' in navigator) {
     };
 
     let currentRaw = null;
-    let map = null;
-    let currentMarker = null; // 現在地ピン
-    let targetMarker = null;  // 目標地ピン
+    let deviceHeading = 0; // スマホが向いている方位(0=北)
+    let targetAngle = 0;   // 目標への方位(0=北)
+    let map = null, currentMarker = null, targetMarker = null;
 
-    // --- 座標系セレクトボックスの生成 ---
+    // --- 1. 座標系セレクトボックス生成 ---
     const sysSelect = document.getElementById('systemSelect');
     for (let i = 1; i <= 19; i++) {
         const opt = document.createElement('option');
@@ -116,38 +96,91 @@ if ('serviceWorker' in navigator) {
         sysSelect.appendChild(opt);
     }
 
-    // 逆変換（平面直角座標 -> 緯度経度）目標ピン表示用
-    function reverseConvert(x, y, sysId) {
-        const origin = SYSTEM_ORIGINS[sysId];
-        const phi0 = origin[0] * Math.PI / 180;
-        const lam0 = origin[1] * Math.PI / 180;
-        const a = 6378137.0, f = 1/298.257222101, m0 = 0.9999;
-        const e2 = f*(2-f), n = f/(2-f);
-        const ap = (a/(1+n))*(1 + (n**2)/4 + (n**4)/64);
-        const s0 = ((p) => {
-            const A = 1 + (3/4)*e2 + (45/64)*(e2**2) + (175/256)*(e2**3);
-            const B = (3/4)*e2 + (15/16)*(e2**2) + (525/512)*(e2**3);
-            const C = (15/64)*(e2**2) + (105/256)*(e2**3);
-            return a*(1-e2)*(A*p - (B/2)*Math.sin(2*p) + (C/4)*Math.sin(4*p));
-        })(phi0);
+    // --- 2. 角度・座標計算ロジック ---
+    function updateNavigation() {
+        const tx = parseFloat(document.getElementById('targetX').value);
+        const ty = parseFloat(document.getElementById('targetY').value);
+        if (isNaN(tx) || isNaN(ty) || !currentRaw || !currentRaw.x) return;
 
-        const xi = (x + m0 * s0) / (m0 * ap);
-        const eta = y / (m0 * ap);
-        const delta = [0, (1/2)*n-(2/3)*(n**2)+(37/96)*(n**3), (1/48)*(n**2)+(1/15)*(n**3), (17/480)*(n**3)];
-        let xip = xi, etap = eta;
-        for(let j=1; j<=3; j++) {
-            xip -= delta[j] * Math.sin(2*j*xi) * Math.cosh(2*j*eta);
-            etap -= delta[j] * Math.cos(2*j*xi) * Math.sinh(2*j*eta);
-        }
-        const chi = Math.asin(Math.sin(xip) / Math.cosh(etap));
-        const phi = chi + ( (e2/2) + (5/24)*(e2**2) + (e2**3)/12 )*Math.sin(2*chi) 
-                    + ( (7/48)*(e2**2) + (29/240)*(e2**3) )*Math.sin(4*chi) 
-                    + ( (7/120)*(e2**3) )*Math.sin(6*chi);
-        const lam = lam0 + Math.atan(Math.sinh(etap) / Math.cos(xip));
-        return [phi * 180 / Math.PI, lam * 180 / Math.PI];
+        const dx = tx - currentRaw.x;
+        const dy = ty - currentRaw.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        document.getElementById('distVal').innerText = dist.toFixed(1);
+
+        // 北を0度とした目標の角度 (時計回り正)
+        targetAngle = Math.atan2(dy, dx) * 180 / Math.PI;
+        
+        renderArrow();
     }
 
-    // 順変換（緯度経度 -> 平面直角座標）現在地表示用
+    function renderArrow() {
+        // 実際の回転角 = 目標角度 - スマホの向き
+        const rotateDeg = targetAngle - deviceHeading;
+        document.getElementById('arrow').style.transform = `rotate(${rotateDeg}deg)`;
+    }
+
+    // --- 3. コンパス(方位センサー)制御 ---
+    function initCompass() {
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+        if (isIOS && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            DeviceOrientationEvent.requestPermission()
+                .then(response => {
+                    if (response === 'granted') {
+                        window.addEventListener('deviceorientation', handleOrientation, true);
+                        document.getElementById('btnCompass').style.display = 'none';
+                    }
+                }).catch(console.error);
+        } else {
+            window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+            // absoluteが使えない古いAndroid用
+            window.addEventListener('deviceorientation', handleOrientation, true);
+            document.getElementById('btnCompass').style.display = 'none';
+        }
+    }
+
+    function handleOrientation(event) {
+        let heading = 0;
+        if (event.webkitCompassHeading) {
+            heading = event.webkitCompassHeading; // iOS用
+        } else if (event.absolute && event.alpha) {
+            heading = 360 - event.alpha; // Android用
+        } else {
+            return;
+        }
+
+        deviceHeading = heading;
+        document.getElementById('compassDisplay').innerText = `方位：${Math.round(heading)}° (スマホの向き)`;
+        renderArrow();
+    }
+
+    // --- 4. 位置情報(GPS) ---
+    function getLocation() {
+        const status = document.getElementById('status');
+        const sysId = document.getElementById('systemSelect').value;
+        status.innerText = "GPS取得中...";
+        navigator.geolocation.getCurrentPosition(
+            pos => {
+                status.innerText = "更新完了";
+                currentRaw = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+                const res = convert(currentRaw.lat, currentRaw.lon, sysId);
+                currentRaw.x = res.x; currentRaw.y = res.y;
+
+                document.getElementById('lat').innerText = currentRaw.lat.toFixed(5);
+                document.getElementById('lon').innerText = currentRaw.lon.toFixed(5);
+                document.getElementById('posX').innerText = res.x.toFixed(3);
+                document.getElementById('posY').innerText = res.y.toFixed(3);
+                document.getElementById('sysDisplay').innerText = sysId;
+                
+                updateNavigation();
+                if(map) showMap();
+            },
+            err => { status.innerText = "エラー: " + err.message; },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+    }
+
+    // --- 座標変換ロジック (既存と同じため省略せず統合) ---
     function convert(lat, lon, sysId) {
         const origin = SYSTEM_ORIGINS[sysId];
         const phi0 = origin[0] * Math.PI / 180;
@@ -175,108 +208,75 @@ if ('serviceWorker' in navigator) {
         return { x: m0*ap*xi - m0*s(phi0), y: m0*ap*eta };
     }
 
-    function updateNavigation() {
-        const tx = parseFloat(document.getElementById('targetX').value);
-        const ty = parseFloat(document.getElementById('targetY').value);
-        if (isNaN(tx) || isNaN(ty) || !currentRaw || !currentRaw.x) return;
-
-        const dx = tx - currentRaw.x;
-        const dy = ty - currentRaw.y;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        document.getElementById('distVal').innerText = dist.toFixed(1);
-
-        const angleRad = Math.atan2(dy, dx); 
-        const angleDeg = angleRad * 180 / Math.PI;
-        document.getElementById('arrow').style.transform = `rotate(${angleDeg}deg)`;
-    }
-
-    function getLocation() {
-        const status = document.getElementById('status');
-        const sysId = document.getElementById('systemSelect').value;
-        status.innerText = "GPS取得中...";
-        navigator.geolocation.getCurrentPosition(
-            pos => {
-                status.innerText = "更新完了";
-                currentRaw = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-                const res = convert(currentRaw.lat, currentRaw.lon, sysId);
-                currentRaw.x = res.x; currentRaw.y = res.y;
-
-                document.getElementById('lat').innerText = currentRaw.lat.toFixed(5);
-                document.getElementById('lon').innerText = currentRaw.lon.toFixed(5);
-                document.getElementById('posX').innerText = res.x.toFixed(3);
-                document.getElementById('posY').innerText = res.y.toFixed(3);
-                document.getElementById('sysDisplay').innerText = sysId;
-                
-                updateNavigation();
-                if(map) showMap();
-            },
-            err => { status.innerText = "エラー: " + err.message; },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-        );
+    function reverseConvert(x, y, sysId) {
+        const origin = SYSTEM_ORIGINS[sysId];
+        const phi0 = origin[0] * Math.PI / 180;
+        const lam0 = origin[1] * Math.PI / 180;
+        const a = 6378137.0, f = 1/298.257222101, m0 = 0.9999;
+        const e2 = f*(2-f), n = f/(2-f);
+        const ap = (a/(1+n))*(1 + (n**2)/4 + (n**4)/64);
+        const s0 = ((p) => {
+            const A = 1 + (3/4)*e2 + (45/64)*(e2**2) + (175/256)*(e2**3);
+            const B = (3/4)*e2 + (15/16)*(e2**2) + (525/512)*(e2**3);
+            const C = (15/64)*(e2**2) + (105/256)*(e2**3);
+            return a*(1-e2)*(A*p - (B/2)*Math.sin(2*p) + (C/4)*Math.sin(4*p));
+        })(phi0);
+        const xi = (x + m0 * s0) / (m0 * ap);
+        const eta = y / (m0 * ap);
+        const delta = [0, (1/2)*n-(2/3)*(n**2)+(37/96)*(n**3), (1/48)*(n**2)+(1/15)*(n**3), (17/480)*(n**3)];
+        let xip = xi, etap = eta;
+        for(let j=1; j<=3; j++) {
+            xip -= delta[j] * Math.sin(2*j*xi) * Math.cosh(2*j*eta);
+            etap -= delta[j] * Math.cos(2*j*xi) * Math.sinh(2*j*eta);
+        }
+        const chi = Math.asin(Math.sin(xip) / Math.cosh(etap));
+        const phi = chi + ( (e2/2) + (5/24)*(e2**2) + (e2**3)/12 )*Math.sin(2*chi) 
+                    + ( (7/48)*(e2**2) + (29/240)*(e2**3) )*Math.sin(4*chi) 
+                    + ( (7/120)*(e2**3) )*Math.sin(6*chi);
+        const lam = lam0 + Math.atan(Math.sinh(etap) / Math.cos(xip));
+        return [phi * 180 / Math.PI, lam * 180 / Math.PI];
     }
 
     function showMap() {
         if (!currentRaw) return alert("位置情報を取得してください");
-        const mapDiv = document.getElementById('map');
-        mapDiv.style.display = 'block';
+        document.getElementById('map').style.display = 'block';
         const sysId = document.getElementById('systemSelect').value;
-        
-        // 目標地の緯度経度を算出
         const tx = parseFloat(document.getElementById('targetX').value);
         const ty = parseFloat(document.getElementById('targetY').value);
-        let targetLatLng = null;
-        if(!isNaN(tx) && !isNaN(ty)) {
-            targetLatLng = reverseConvert(tx, ty, sysId);
-        }
+        let targetLatLng = (!isNaN(tx) && !isNaN(ty)) ? reverseConvert(tx, ty, sysId) : null;
 
         if (!map) {
             map = L.map('map');
-            L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', {
-                attribution: "地理院地図"
-            }).addTo(map);
-            currentMarker = L.marker([currentRaw.lat, currentRaw.lon], {title: "現在地"}).addTo(map).bindPopup("現在地");
+            L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', { attribution: "地理院地図" }).addTo(map);
+            currentMarker = L.marker([currentRaw.lat, currentRaw.lon]).addTo(map).bindPopup("現在地");
         } else {
             currentMarker.setLatLng([currentRaw.lat, currentRaw.lon]);
         }
 
-        // 目標ピンの処理
         if (targetLatLng) {
             if (!targetMarker) {
                 targetMarker = L.marker(targetLatLng, {
                     icon: L.icon({
                         iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
                         shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-                        iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+                        iconSize: [25, 41], iconAnchor: [12, 41]
                     })
-                }).addTo(map).bindPopup("目標地点");
-            } else {
-                targetMarker.setLatLng(targetLatLng);
-            }
-            // 両方のピンが見えるように調整
-            const group = new L.featureGroup([currentMarker, targetMarker]);
-            map.fitBounds(group.getBounds().pad(0.2)); 
+                }).addTo(map).bindPopup("目標");
+            } else { targetMarker.setLatLng(targetLatLng); }
+            map.fitBounds(new L.featureGroup([currentMarker, targetMarker]).getBounds().pad(0.2));
         } else {
             map.setView([currentRaw.lat, currentRaw.lon], 18);
         }
-        
         setTimeout(() => map.invalidateSize(), 100);
     }
 
+    // --- イベントリスナー ---
+    document.getElementById('btnCompass').addEventListener('click', initCompass);
     document.getElementById('btnGps').addEventListener('click', getLocation);
     document.getElementById('btnMap').addEventListener('click', showMap);
     document.getElementById('targetX').addEventListener('input', updateNavigation);
     document.getElementById('targetY').addEventListener('input', updateNavigation);
-    document.getElementById('systemSelect').addEventListener('change', () => {
-        if(currentRaw) getLocation();
-    });
+    document.getElementById('systemSelect').addEventListener('change', () => { if(currentRaw) getLocation(); });
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
