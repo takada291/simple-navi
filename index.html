@@ -10,6 +10,7 @@
         body { font-family: sans-serif; margin: 10px; background-color: #f0f4f8; color: #333; }
         .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); max-width: 600px; margin: auto; }
         h1 { font-size: 1.1rem; margin: 0 0 10px 0; color: #004a99; text-align: center; border-bottom: 2px solid #eee; padding-bottom: 5px; }
+        p { font-size: 0.8rem; text-align: center; margin: 5px 0; }
         
         .nav-panel { background: #e3f2fd; border: 2px solid #2196f3; border-radius: 10px; padding: 15px; margin-bottom: 15px; text-align: center; }
         .nav-target-input { display: flex; gap: 5px; margin-bottom: 10px; }
@@ -28,18 +29,23 @@
         .btn-map { background: #ff9800; color: white; }
         .btn-compass { background: #28a745; color: white; }
         #map { height: 250px; width: 100%; border-radius: 8px; margin-bottom: 15px; display: none; border: 1px solid #ccc; }
-        #status { font-size: 0.8rem; color: #666; text-align: center; margin-bottom: 5px; }
+        /* ステータス表示エリアを確保 */
+        #status { font-size: 0.8rem; color: #d32f2f; text-align: center; margin-bottom: 10px; font-weight: bold; min-height: 1.2em; }
         
-        .system-box { background: #eee; padding: 10px; border-radius: 8px; font-size: 0.8rem; }
+        .system-box { background: #eee; padding: 10px; border-radius: 8px; font-size: 0.8rem; margin-bottom: 10px; }
         select { width: 100%; padding: 8px; margin-top: 5px; border-radius: 4px; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h1>簡易ナビv1.9</h1>
-    <p>事前にオンラインで目標地周辺の地図を閲覧しキャッシュして下さい。</p>
+    <h1>簡易ナビv1.9.1</h1>
+    <p>事前に地図を閲覧しキャッシュして下さい。</p>
+    
+    <div id="status"></div>
+
     <button class="btn-compass" id="btnCompass">コンパスを有効にする</button>
+
     <div class="nav-panel">
         <div class="compass-info" id="compassDisplay">方位計測：オフ</div>
         <div class="nav-target-input">
@@ -51,17 +57,22 @@
             <div class="distance-display"><span id="distVal">---</span> m</div>
         </div>
     </div>
+
     <div class="system-box">
         座標系の選択:
         <select id="systemSelect"></select>
     </div>    
+    
     <button class="btn-gps" id="btnGps">現在地を更新（GPS）</button>
+
     <div id="map"></div>
+
     <div class="display">
         <div><span>現在 X (北):</span> <span class="val" id="posX">---</span> m</div>
         <div><span>現在 Y (東):</span> <span class="val" id="posY">---</span> m</div>
         <div style="font-size: 0.7rem; color: #aaa; margin-top:5px;">系: <span id="sysDisplay">6</span>系 / 緯度:<span id="lat">--</span> 経度:<span id="lon">--</span></div>
     </div>
+    
     <button class="btn-map" id="btnMap">地図を表示</button>
 </div>
 
@@ -76,8 +87,8 @@
     };
 
     let currentRaw = null;
-    let deviceHeading = 0; // スマホが向いている方位(0=北)
-    let targetAngle = 0;   // 目標への方位(0=北)
+    let deviceHeading = 0; 
+    let targetAngle = 0;   
     let map = null, currentMarker = null, targetMarker = null;
 
     // --- 1. 座標系セレクトボックス生成 ---
@@ -90,7 +101,7 @@
         sysSelect.appendChild(opt);
     }
 
-    // --- 2. 角度・座標計算ロジック ---
+    // --- 2. 角度・座標計算 ---
     function updateNavigation() {
         const tx = parseFloat(document.getElementById('targetX').value);
         const ty = parseFloat(document.getElementById('targetY').value);
@@ -100,23 +111,18 @@
         const dy = ty - currentRaw.y;
         const dist = Math.sqrt(dx*dx + dy*dy);
         document.getElementById('distVal').innerText = dist.toFixed(1);
-
-        // 北を0度とした目標の角度 (時計回り正)
         targetAngle = Math.atan2(dy, dx) * 180 / Math.PI;
-        
         renderArrow();
     }
 
     function renderArrow() {
-        // 実際の回転角 = 目標角度 - スマホの向き
         const rotateDeg = targetAngle - deviceHeading;
         document.getElementById('arrow').style.transform = `rotate(${rotateDeg}deg)`;
     }
 
-    // --- 3. コンパス(方位センサー)制御 ---
+    // --- 3. コンパス制御 ---
     function initCompass() {
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-
         if (isIOS && typeof DeviceOrientationEvent.requestPermission === 'function') {
             DeviceOrientationEvent.requestPermission()
                 .then(response => {
@@ -124,10 +130,9 @@
                         window.addEventListener('deviceorientation', handleOrientation, true);
                         document.getElementById('btnCompass').style.display = 'none';
                     }
-                }).catch(console.error);
+                }).catch(err => alert("コンパス許可エラー: " + err));
         } else {
             window.addEventListener('deviceorientationabsolute', handleOrientation, true);
-            // absoluteが使えない古いAndroid用
             window.addEventListener('deviceorientation', handleOrientation, true);
             document.getElementById('btnCompass').style.display = 'none';
         }
@@ -135,26 +140,24 @@
 
     let compassTimer = setTimeout(() => {
         const display = document.getElementById('compassDisplay');
-        if (display.innerText === "方位計測：オフ") {
+        if (display && display.innerText === "方位計測：オフ") {
             display.innerText = "⚠️電子コンパス非対応：端末上部を北に向けて下さい";
             display.style.color = "red";
-            deviceHeading = 0; // 0度固定（北向き前提）
+            deviceHeading = 0;
             renderArrow();
         }
-    }, 3000); // 3秒待っても反応がなければ非対応とみなす
+    }, 4000);
 
     function handleOrientation(event) {
         let heading = null;
-        if (event.webkitCompassHeading) {
-            heading = event.webkitCompassHeading; // iOS
-        } else if (event.absolute && event.alpha) {
-            heading = 360 - event.alpha; // Android
-        } else if (event.alpha) {
-            heading = 360 - event.alpha; // 一部のAndroid
+        if (event.webkitCompassHeading !== undefined) {
+            heading = event.webkitCompassHeading;
+        } else if (event.alpha !== null) {
+            heading = 360 - event.alpha;
         }
 
         if (heading !== null) {
-            clearTimeout(compassTimer); // センサーが動いたらタイマー解除
+            clearTimeout(compassTimer);
             deviceHeading = heading;
             const display = document.getElementById('compassDisplay');
             display.innerText = `方位：${Math.round(heading)}° (スマホの向き)`;
@@ -163,14 +166,17 @@
         }
     }
 
-    // --- 4. 位置情報(GPS) ---
+    // --- 4. GPS位置情報 (修正：タイムアウト設定を緩和) ---
     function getLocation() {
         const status = document.getElementById('status');
         const sysId = document.getElementById('systemSelect').value;
         status.innerText = "GPS取得中...";
+        status.style.color = "#007bff";
+
         navigator.geolocation.getCurrentPosition(
             pos => {
                 status.innerText = "更新完了";
+                status.style.color = "#28a745";
                 currentRaw = { lat: pos.coords.latitude, lon: pos.coords.longitude };
                 const res = convert(currentRaw.lat, currentRaw.lon, sysId);
                 currentRaw.x = res.x; currentRaw.y = res.y;
@@ -184,12 +190,16 @@
                 updateNavigation();
                 if(map) showMap();
             },
-            err => { status.innerText = "エラー: " + err.message; },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            err => { 
+                status.innerText = "GPSエラー: " + err.message; 
+                status.style.color = "#d32f2f";
+                if(err.code === 1) alert("位置情報の利用を許可してください。設定 > Safari > 位置情報");
+            },
+            { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
         );
     }
 
-    // --- 座標変換ロジック (既存と同じため省略せず統合) ---
+    // 座標変換ロジック
     function convert(lat, lon, sysId) {
         const origin = SYSTEM_ORIGINS[sysId];
         const phi0 = origin[0] * Math.PI / 180;
@@ -289,6 +299,3 @@
 </script>
 </body>
 </html>
-
-
-
