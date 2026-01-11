@@ -1,4 +1,4 @@
-const CACHE_NAME = 'simple-navi-v1.9'; // バージョン番号を上げて更新を通知
+const CACHE_NAME = 'simple-navi-v1.9.1'; // バージョン番号を上げて更新を通知
 const urlsToCache = [
   './',
   'index.html',
@@ -73,6 +73,7 @@ self.addEventListener('fetch', (event) => {
   );
 
 });
+
 
 
 
