@@ -111,7 +111,7 @@ if ('serviceWorker' in navigator) {
     for (let i = 1; i <= 19; i++) {
         const opt = document.createElement('option');
         opt.value = i;
-        opt.innerText = `第 ${i} 系 ${i===6 ? '(デフォルト)' : ''}`;
+        opt.innerText = `第 ${i} 系 ${i===6 ? '(福井等)' : ''}`;
         if (i === 6) opt.selected = true;
         sysSelect.appendChild(opt);
     }
@@ -272,6 +272,7 @@ if ('serviceWorker' in navigator) {
 </script>
 </body>
 </html>
+
 
 
 
