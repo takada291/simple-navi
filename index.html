@@ -40,7 +40,7 @@
 
 <div class="card">
     <h1>簡易ナビv2.0</h1>
-    <p>事前に地図を閲覧しキャッシュして下さい。</p>
+    <p>事前に調査箇所周辺の地図を閲覧して下さい。地図データが保存されます。</p>
     
     <div id="status"></div>
 
@@ -141,7 +141,7 @@
     let compassTimer = setTimeout(() => {
         const display = document.getElementById('compassDisplay');
         if (display && display.innerText === "方位計測：オフ") {
-            display.innerText = "⚠️電子コンパス非対応：端末上部を北に向けて下さい";
+            display.innerText = "⚠️電子コンパス非対応→端末上部を北に向けて下さい";
             display.style.color = "red";
             deviceHeading = 0;
             renderArrow();
@@ -299,5 +299,6 @@
 </script>
 </body>
 </html>
+
 
 
