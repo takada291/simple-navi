@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>simple-navi</title>
+    <title>simple-navi v2.1</title>
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
@@ -13,7 +13,7 @@
         p { font-size: 0.8rem; text-align: center; margin: 5px 0; }
         
         .nav-panel { background: #e3f2fd; border: 2px solid #2196f3; border-radius: 10px; padding: 15px; margin-bottom: 15px; text-align: center; }
-        .nav-target-input { display: flex; gap: 5px; margin-bottom: 10px; }
+        .nav-target-input { display: flex; gap: 5px; margin-bottom: 5px; }
         .nav-target-input input { width: 50%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; font-size: 0.9rem; }
         
         .arrow-container { font-size: 4rem; margin: 10px 0; transition: transform 0.1s linear; display: inline-block; }
@@ -34,12 +34,15 @@
         
         .system-box { background: #eee; padding: 10px; border-radius: 8px; font-size: 0.8rem; margin-bottom: 10px; }
         select { width: 100%; padding: 8px; margin-top: 5px; border-radius: 4px; }
+        
+        /* ラベル用の追加スタイル */
+        .input-label { font-size: 0.75rem; color: #004a99; text-align: left; font-weight: bold; margin-top: 5px; margin-bottom: 2px; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h1>簡易ナビv2.0</h1>
+    <h1>簡易ナビv2.1</h1>
     <p>事前に調査箇所周辺の地図を閲覧して下さい。地図データが保存されます。</p>
     
     <div id="status"></div>
@@ -48,10 +51,19 @@
 
     <div class="nav-panel">
         <div class="compass-info" id="compassDisplay">方位計測：オフ</div>
+        
+        <div class="input-label">目標 X / Y (m)</div>
         <div class="nav-target-input">
             <input type="number" id="targetX" placeholder="目標 X (北)" step="0.001">
             <input type="number" id="targetY" placeholder="目標 Y (東)" step="0.001">
         </div>
+
+        <div class="input-label">目標 緯度 / 経度 (度単位かつ少数6位まで)</div>
+        <div class="nav-target-input">
+            <input type="number" id="targetLat" placeholder="目標緯度 (36.xxx)" step="0.000001">
+            <input type="number" id="targetLon" placeholder="目標経度 (136.xxx)" step="0.000001">
+        </div>
+
         <div id="navResult">
             <div class="arrow-container" id="arrow">↑</div>
             <div class="distance-display"><span id="distVal">---</span> m</div>
@@ -61,7 +73,7 @@
     <div class="system-box">
         座標系の選択:
         <select id="systemSelect"></select>
-    </div>    
+    </div>      
     
     <button class="btn-gps" id="btnGps">現在地を更新（GPS）</button>
 
@@ -120,6 +132,35 @@
         document.getElementById('arrow').style.transform = `rotate(${rotateDeg}deg)`;
     }
 
+    // --- 【指示】入力連動ロジック (LatLon <-> XY) ---
+    // 緯度経度が入力されたらXYを計算し、ナビを更新
+    function syncFromLatLon() {
+        const tLat = parseFloat(document.getElementById('targetLat').value);
+        const tLon = parseFloat(document.getElementById('targetLon').value);
+        const sysId = document.getElementById('systemSelect').value;
+
+        if (!isNaN(tLat) && !isNaN(tLon)) {
+            const res = convert(tLat, tLon, sysId);
+            document.getElementById('targetX').value = res.x.toFixed(3);
+            document.getElementById('targetY').value = res.y.toFixed(3);
+            updateNavigation(); // ナビ計算へ
+        }
+    }
+
+    // XYが入力されたら緯度経度を計算し、ナビを更新
+    function syncFromXY() {
+        const tx = parseFloat(document.getElementById('targetX').value);
+        const ty = parseFloat(document.getElementById('targetY').value);
+        const sysId = document.getElementById('systemSelect').value;
+
+        if (!isNaN(tx) && !isNaN(ty)) {
+            const res = reverseConvert(tx, ty, sysId); // [lat, lon]
+            document.getElementById('targetLat').value = res[0].toFixed(6);
+            document.getElementById('targetLon').value = res[1].toFixed(6);
+            updateNavigation(); // ナビ計算へ
+        }
+    }
+
     // --- 3. コンパス制御 ---
     function initCompass() {
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
@@ -166,7 +207,7 @@
         }
     }
 
-    // --- 4. GPS位置情報 (修正：タイムアウト設定を緩和) ---
+    // --- 4. GPS位置情報 ---
     function getLocation() {
         const status = document.getElementById('status');
         const sysId = document.getElementById('systemSelect').value;
@@ -293,12 +334,14 @@
     document.getElementById('btnCompass').addEventListener('click', initCompass);
     document.getElementById('btnGps').addEventListener('click', getLocation);
     document.getElementById('btnMap').addEventListener('click', showMap);
-    document.getElementById('targetX').addEventListener('input', updateNavigation);
-    document.getElementById('targetY').addEventListener('input', updateNavigation);
+    
+    // 【指示】入力連動イベント
+    document.getElementById('targetLat').addEventListener('input', syncFromLatLon);
+    document.getElementById('targetLon').addEventListener('input', syncFromLatLon);
+    document.getElementById('targetX').addEventListener('input', syncFromXY);
+    document.getElementById('targetY').addEventListener('input', syncFromXY);
+    
     document.getElementById('systemSelect').addEventListener('change', () => { if(currentRaw) getLocation(); });
 </script>
 </body>
 </html>
-
-
-
