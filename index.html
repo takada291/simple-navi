@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>simple-navi v2.1</title>
+    <title>simple-navi v2.2</title>
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { font-family: sans-serif; margin: 10px; background-color: #f0f4f8; color: #333; }
+        body { font-family: sans-serif; margin: 10px; background-color: #f0f4f8; color: #333; -webkit-tap-highlight-color: transparent; }
         .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); max-width: 600px; margin: auto; }
         h1 { font-size: 1.1rem; margin: 0 0 10px 0; color: #004a99; text-align: center; border-bottom: 2px solid #eee; padding-bottom: 5px; }
         p { font-size: 0.8rem; text-align: center; margin: 5px 0; }
@@ -24,28 +24,41 @@
         .display div { display: flex; justify-content: space-between; margin-bottom: 2px; }
         .display .val { font-weight: bold; color: #fff; }
         
-        button { width: 100%; padding: 14px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 1rem; margin-bottom: 8px; }
+        button { width: 100%; padding: 14px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 1rem; margin-bottom: 8px; transition: background 0.3s; }
+        
+        /* GPSボタンのアニメーション追加 */
         .btn-gps { background: #007bff; color: white; }
-        .btn-map { background: #ff9800; color: white; }
+        .btn-gps.tracking { background: #dc3545; animation: pulse 1.5s infinite; }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+        }
+
+        .btn-map { background: #ff9800; color: white; margin-bottom: 5px; }
         .btn-compass { background: #28a745; color: white; }
-        #map { height: 250px; width: 100%; border-radius: 8px; margin-bottom: 15px; display: none; border: 1px solid #ccc; }
-        /* ステータス表示エリアを確保 */
+        
+        /* データ消去ボタン */
+        .btn-clear { background: #fff; color: #d32f2f; border: 1px solid #d32f2f; font-size: 0.9rem; padding: 10px; margin-top: 5px; }
+
+        #map { height: 350px; width: 100%; border-radius: 8px; margin-bottom: 15px; display: none; border: 1px solid #ccc; }
+        
+        /* ステータス表示エリア */
         #status { font-size: 0.8rem; color: #d32f2f; text-align: center; margin-bottom: 10px; font-weight: bold; min-height: 1.2em; }
         
         .system-box { background: #eee; padding: 10px; border-radius: 8px; font-size: 0.8rem; margin-bottom: 10px; }
         select { width: 100%; padding: 8px; margin-top: 5px; border-radius: 4px; }
         
-        /* ラベル用の追加スタイル */
         .input-label { font-size: 0.75rem; color: #004a99; text-align: left; font-weight: bold; margin-top: 5px; margin-bottom: 2px; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h1>簡易ナビv2.1</h1>
+    <h1>簡易ナビv2.2</h1>
     <p>事前に調査箇所周辺の地図を閲覧して下さい。地図データが保存されます。</p>
     
-    <div id="status"></div>
+    <div id="status">待機中</div>
 
     <button class="btn-compass" id="btnCompass">コンパスを有効にする</button>
 
@@ -75,7 +88,7 @@
         <select id="systemSelect"></select>
     </div>      
     
-    <button class="btn-gps" id="btnGps">現在地を更新（GPS）</button>
+    <button class="btn-gps" id="btnGps">現在地を連続して取得（開始）</button>
 
     <div id="map"></div>
 
@@ -86,6 +99,7 @@
     </div>
     
     <button class="btn-map" id="btnMap">地図を表示（現在地；青、目標地；赤）</button>
+    <button class="btn-clear" id="btnClearTrace">取得した軌跡データを消去</button>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -98,10 +112,17 @@
         15:[26,124], 16:[26,127], 17:[26,131], 18:[20,136], 19:[26,154]
     };
 
+    const GPS_INTERVAL = 15000; // 15秒間隔
+    const STORAGE_KEY_TRACE = 'simpleNaviTraceData'; // 簡易ナビ用の軌跡保存キー
+
     let currentRaw = null;
     let deviceHeading = 0; 
     let targetAngle = 0;   
-    let map = null, currentMarker = null, targetMarker = null;
+    let map = null, currentMarker = null, targetMarker = null, tracePolyline = null;
+    
+    // 連続取得用変数
+    let isTracking = false;
+    let trackingIntervalId = null;
 
     // --- 1. 座標系セレクトボックス生成 ---
     const sysSelect = document.getElementById('systemSelect');
@@ -132,8 +153,7 @@
         document.getElementById('arrow').style.transform = `rotate(${rotateDeg}deg)`;
     }
 
-    // --- 【指示】入力連動ロジック (LatLon <-> XY) ---
-    // 緯度経度が入力されたらXYを計算し、ナビを更新
+    // --- 入力連動ロジック (LatLon <-> XY) ---
     function syncFromLatLon() {
         const tLat = parseFloat(document.getElementById('targetLat').value);
         const tLon = parseFloat(document.getElementById('targetLon').value);
@@ -143,21 +163,20 @@
             const res = convert(tLat, tLon, sysId);
             document.getElementById('targetX').value = res.x.toFixed(3);
             document.getElementById('targetY').value = res.y.toFixed(3);
-            updateNavigation(); // ナビ計算へ
+            updateNavigation();
         }
     }
 
-    // XYが入力されたら緯度経度を計算し、ナビを更新
     function syncFromXY() {
         const tx = parseFloat(document.getElementById('targetX').value);
         const ty = parseFloat(document.getElementById('targetY').value);
         const sysId = document.getElementById('systemSelect').value;
 
         if (!isNaN(tx) && !isNaN(ty)) {
-            const res = reverseConvert(tx, ty, sysId); // [lat, lon]
+            const res = reverseConvert(tx, ty, sysId);
             document.getElementById('targetLat').value = res[0].toFixed(6);
             document.getElementById('targetLon').value = res[1].toFixed(6);
-            updateNavigation(); // ナビ計算へ
+            updateNavigation();
         }
     }
 
@@ -207,17 +226,52 @@
         }
     }
 
-    // --- 4. GPS位置情報 ---
+    // --- 4. GPS位置情報 (連続取得対応) ---
+    // GPSボタンクリック時のトグル処理
+    function toggleTracking() {
+        const btn = document.getElementById('btnGps');
+        const status = document.getElementById('status');
+
+        if (isTracking) {
+            // 停止処理
+            clearInterval(trackingIntervalId);
+            isTracking = false;
+            btn.innerHTML = "現在地を連続して取得（開始）";
+            btn.classList.remove('tracking');
+            status.innerText = "一時停止中";
+            status.style.color = "#666";
+        } else {
+            // 開始処理
+            isTracking = true;
+            btn.innerHTML = "停止する（連続記録中）";
+            btn.classList.add('tracking');
+            status.innerText = "GPS探索中...";
+            status.style.color = "#dc3545";
+            
+            // 初回即時実行
+            getLocation();
+            
+            // 定期実行設定
+            trackingIntervalId = setInterval(getLocation, GPS_INTERVAL);
+        }
+    }
+
     function getLocation() {
         const status = document.getElementById('status');
         const sysId = document.getElementById('systemSelect').value;
-        status.innerText = "GPS取得中...";
-        status.style.color = "#007bff";
+        
+        // 連続取得中はステータス表示を少し変える
+        if(!isTracking) {
+            status.innerText = "GPS取得中...";
+            status.style.color = "#007bff";
+        }
 
         navigator.geolocation.getCurrentPosition(
             pos => {
-                status.innerText = "更新完了";
+                const nowTime = new Date().toLocaleTimeString();
+                status.innerText = isTracking ? `更新完了 (${nowTime})` : "更新完了";
                 status.style.color = "#28a745";
+                
                 currentRaw = { lat: pos.coords.latitude, lon: pos.coords.longitude };
                 const res = convert(currentRaw.lat, currentRaw.lon, sysId);
                 currentRaw.x = res.x; currentRaw.y = res.y;
@@ -228,16 +282,45 @@
                 document.getElementById('posY').innerText = res.y.toFixed(3);
                 document.getElementById('sysDisplay').innerText = sysId;
                 
-                updateNavigation();
-                if(map) showMap();
+                updateNavigation(); // 距離・方向の更新
+                saveTrace(currentRaw.lat, currentRaw.lon); // 軌跡の保存
+                
+                // 地図が開いていれば更新
+                if(document.getElementById('map').style.display === 'block') {
+                    showMap(false); // false = 地図の強制リセット（setView）はしない
+                }
             },
             err => { 
                 status.innerText = "GPSエラー: " + err.message; 
                 status.style.color = "#d32f2f";
-                if(err.code === 1) alert("位置情報の利用を許可してください。設定 > Safari > 位置情報");
+                // エラーが出ても連続取得は止めない（山間部などでの瞬断を考慮）
             },
             { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
         );
+    }
+
+    // 軌跡保存
+    function saveTrace(lat, lon) {
+        const trace = JSON.parse(localStorage.getItem(STORAGE_KEY_TRACE) || "[]");
+        // 直近のデータと全く同じなら保存しない（重複回避）
+        if (trace.length > 0) {
+            const last = trace[trace.length - 1];
+            if (last[0] === lat && last[1] === lon) return;
+        }
+        trace.push([lat, lon]);
+        localStorage.setItem(STORAGE_KEY_TRACE, JSON.stringify(trace));
+    }
+
+    // 軌跡消去
+    function clearTrace() {
+        if(confirm("保存されている移動の軌跡データを消去しますか？\n（目標地点の設定は消えません）")) {
+            localStorage.removeItem(STORAGE_KEY_TRACE);
+            if(map && tracePolyline) {
+                map.removeLayer(tracePolyline);
+                tracePolyline = null;
+            }
+            alert("軌跡を消去しました。");
+        }
     }
 
     // 座標変換ロジック
@@ -297,7 +380,7 @@
         return [phi * 180 / Math.PI, lam * 180 / Math.PI];
     }
 
-    function showMap() {
+    function showMap(fitBounds = true) {
         if (!currentRaw) return alert("位置情報を取得してください");
         document.getElementById('map').style.display = 'block';
         const sysId = document.getElementById('systemSelect').value;
@@ -313,6 +396,7 @@
             currentMarker.setLatLng([currentRaw.lat, currentRaw.lon]);
         }
 
+        // 目標マーカーの処理
         if (targetLatLng) {
             if (!targetMarker) {
                 targetMarker = L.marker(targetLatLng, {
@@ -323,19 +407,42 @@
                     })
                 }).addTo(map).bindPopup("目標");
             } else { targetMarker.setLatLng(targetLatLng); }
-            map.fitBounds(new L.featureGroup([currentMarker, targetMarker]).getBounds().pad(0.2));
-        } else {
-            map.setView([currentRaw.lat, currentRaw.lon], 18);
         }
+
+        // 軌跡ラインの描画処理
+        const trace = JSON.parse(localStorage.getItem(STORAGE_KEY_TRACE) || "[]");
+        if (trace.length > 0) {
+            if (tracePolyline) {
+                tracePolyline.setLatLngs(trace);
+            } else {
+                tracePolyline = L.polyline(trace, {color: 'blue', weight: 4, opacity: 0.6}).addTo(map);
+            }
+        }
+
+        // 地図の範囲調整（fitBoundsがtrueの場合のみ）
+        if (fitBounds) {
+            const boundsGroup = [currentMarker];
+            if (targetMarker) boundsGroup.push(targetMarker);
+            // 軌跡も含めて全体を表示したい場合は以下を有効化
+            // if (tracePolyline) boundsGroup.push(tracePolyline); 
+            
+            const group = L.featureGroup(boundsGroup);
+            map.fitBounds(group.getBounds().pad(0.2));
+        }
+        
         setTimeout(() => map.invalidateSize(), 100);
     }
 
     // --- イベントリスナー ---
     document.getElementById('btnCompass').addEventListener('click', initCompass);
-    document.getElementById('btnGps').addEventListener('click', getLocation);
-    document.getElementById('btnMap').addEventListener('click', showMap);
+    // ボタンクリック時の挙動をtoggleTrackingに変更
+    document.getElementById('btnGps').addEventListener('click', toggleTracking);
     
-    // 【指示】入力連動イベント
+    document.getElementById('btnMap').addEventListener('click', () => showMap(true));
+    // 消去ボタン
+    document.getElementById('btnClearTrace').addEventListener('click', clearTrace);
+    
+    // 入力連動イベント
     document.getElementById('targetLat').addEventListener('input', syncFromLatLon);
     document.getElementById('targetLon').addEventListener('input', syncFromLatLon);
     document.getElementById('targetX').addEventListener('input', syncFromXY);
