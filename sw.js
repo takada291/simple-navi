@@ -1,4 +1,4 @@
-const CACHE_NAME = 'simple-navi-v2.2.0'; // 2026.01.23 04:42
+const CACHE_NAME = 'simple-navi-v2.2.1'; // 2026.01.23 21:08
 const urlsToCache = [
   './',
   'index.html',
@@ -73,6 +73,7 @@ self.addEventListener('fetch', (event) => {
   );
 
 });
+
 
 
 
