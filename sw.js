@@ -1,4 +1,4 @@
-const CACHE_NAME = 'simple-navi-v2.4.0'; // 
+const CACHE_NAME = 'simple-navi-v2.4.1'; // 
 const urlsToCache = [
   './',
   'index.html',
