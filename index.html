@@ -6,6 +6,17 @@
     <title>simple-navi</title>
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-WXBP6CPKLP"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      // ここも測定IDに書き換えます
+      gtag('config', 'G-WXBP6CPKLP');
+    </script>
+    
     <style>
         body { font-family: sans-serif; margin: 10px; background-color: #f0f4f8; color: #333; -webkit-tap-highlight-color: transparent; }
         .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); max-width: 600px; margin: auto; }
